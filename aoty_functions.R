@@ -80,33 +80,6 @@ aoty_score_meta <- function(album_id) {
        dat_meta = dat_meta)
 }
 
-# source_python("/Users/damon/Downloads/rbo-master/rbo.py")
-# 
-# aoty_rbo <- function(pub_1, pub_2, p = 0.5, max = Inf) {
-#   py$p <- p
-#   
-#   py$list_1 <- ratings %>% 
-#     filter(pub_name == pub_1, is_ranked) %>% 
-#     select(x = rank, nm = album_id) %>%
-#     pmap(set_names) %>% 
-#     unlist() %>% 
-#     tail(max) %>% 
-#     as.list() %>% 
-#     dict()
-#   
-#   py$list_2 <- ratings %>% 
-#     filter(pub_name == pub_2, is_ranked) %>% 
-#     select(x = rank, nm = album_id) %>%
-#     pmap(set_names) %>% 
-#     unlist() %>% 
-#     tail(max) %>%
-#     as.list() %>% 
-#     dict()
-#   
-#   py_run_string("result = rbo_dict(list_1, list_2, p = p)")
-#   bind_rows(unlist(py$result))
-# }
-
 aoty_most_similar <- function(cor = aoty_cor, n = Inf){
   cor %>%
     as.data.frame() %>% 
@@ -136,3 +109,31 @@ aoty_most_similar_to <- function(cor = aoty_cor, n = Inf, pub){
     filter(Publication != pub) %>% 
     arrange(desc(Similarity))
 }
+
+## Unused function to call Python rbo function
+# source_python("/Users/damon/Downloads/rbo-master/rbo.py")
+# 
+# aoty_rbo <- function(pub_1, pub_2, p = 0.5, max = Inf) {
+#   py$p <- p
+#   
+#   py$list_1 <- ratings %>% 
+#     filter(pub_name == pub_1, is_ranked) %>% 
+#     select(x = rank, nm = album_id) %>%
+#     pmap(set_names) %>% 
+#     unlist() %>% 
+#     tail(max) %>% 
+#     as.list() %>% 
+#     dict()
+#   
+#   py$list_2 <- ratings %>% 
+#     filter(pub_name == pub_2, is_ranked) %>% 
+#     select(x = rank, nm = album_id) %>%
+#     pmap(set_names) %>% 
+#     unlist() %>% 
+#     tail(max) %>%
+#     as.list() %>% 
+#     dict()
+#   
+#   py_run_string("result = rbo_dict(list_1, list_2, p = p)")
+#   bind_rows(unlist(py$result))
+# }

@@ -4,6 +4,9 @@ library(here)
 library(rvest)
 source(here("aoty_functions.R"))
 
+# Run this to update everything if a new list is published
+
+## Update Rankings
 
 rankings_original <- read_rds(here("rankings.rds"))
 
@@ -36,7 +39,7 @@ rankings <- bind_rows(rankings_original, pub_rankings)
 
 write_rds(rankings, here("rankings.rds"))
 
-################################################################################
+## Update Meta and Scores
 
 meta_original <- read_rds(here("meta.rds"))
 scores_original <- read_rds(here("scores.rds"))

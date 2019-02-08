@@ -16,6 +16,7 @@ meta <- bind_rows(dat$dat_meta)
 
 ################################################################################
 # label fails on a few entries
+# could fix regex, but there are only a few errprs
 meta %>% group_by(album_id) %>% filter(n() > 1)
 
 meta[which(meta$album_id == "99028")[1], "label"] <- "Father/Daughter"

@@ -1,0 +1,395 @@
+---
+title: 🎵Analyzing the Top 100 Albums of 2018
+subtitle: and all the other ones, too
+author: ''
+date: '2019-01-13'
+slug: aoty-2018
+categories: []
+tags:
+  - R
+  - music
+  - analysis
+header:
+  caption: ''
+  image: ''
+output:
+  blogdown::html_page:
+    toc: true
+    df_print: kable
+---
+
+```{r knitr setup, include=FALSE}
+knitr::opts_chunk$set(echo = F, message = F)
+knitr::opts_chunk$set(dev.args=list(bg="transparent"))
+```
+
+```{r load packages}
+library(tidyverse)
+library(here)
+library(patchwork)
+
+aoty_most_similar <- function(cor = aoty_cor, n = Inf){
+  cor %>%
+    as.data.frame() %>% 
+    rownames_to_column() %>%
+    as_tibble() %>%
+    gather(key = "pub2", value = 'value', -rowname) %>%
+    rename(pub1 = rowname) %>%
+    filter(pub1 != pub2) %>% 
+    mutate(key = paste0(pmin(pub1, pub2), pmax(pub1, pub2), sep = "")) %>% 
+    distinct(key, .keep_all = T) %>% 
+    select(-key) %>% 
+    arrange(desc(value)) %>% 
+    rename("Publication 1" = pub1,
+           "Publication 2" = pub2,
+           "Similarity" = value) %>% 
+    head(n)
+}
+
+aoty_most_similar_to <- function(cor = aoty_cor, n = Inf, pub){
+  cor %>%
+    as.data.frame() %>% 
+    rownames_to_column() %>%
+    filter(rowname == pub) %>% 
+    as_tibble() %>% 
+    select(-rowname) %>% 
+    gather("Publication", "Similarity") %>% 
+    filter(Publication != pub) %>% 
+    arrange(desc(Similarity))
+}
+
+theme_set(theme_bw())
+theme_update(panel.background = element_rect(fill = "transparent", colour = NA),
+             plot.background = element_rect(fill = "transparent", colour = NA))
+```
+
+
+```{r load data}
+meta <- read_rds(here("static", "data", "meta.rds"))
+ratings <- read_rds(here("static", "data", "ratings.rds"))
+aoty <- full_join(ratings, meta)
+top_100 <- aoty %>% filter(pub_name == "aoty", is_ranked)
+
+list_mat <- ratings %>% 
+  filter(is_ranked) %>% 
+  replace_na(replace = list(rank = 1)) %>% 
+  select(album_id, pub_name, rank) %>% 
+  group_by(pub_name) %>% 
+  mutate(rank = max(rank) - rank + 1) %>% 
+  spread(key = pub_name, value = rank, fill = 0) %>% 
+  select(-album_id) %>%
+  t()
+
+aoty_cor <- list_mat %>% 
+  skmeans::skmeans_xdist() %>% 
+  `-`(1) %>%
+  abs()
+```
+
+```{r}
+p4k_score <- ratings %>% filter(pub_name == "Pitchfork") %>% pull(score) %>% mean(na.rm = T) %>% `/`(10) %>% round(1)
+aoty_score <- ratings %>% filter(pub_name != "aoty") %>% pull(score) %>% mean(na.rm = T) %>% `/`(10) %>% round(1)
+```
+
+
+## Reviewers Give Music `r aoty_score`
+
+In 2007, The Onion published one of my favorite pieces: [Pitchfork Gives Music 6.8](https://entertainment.theonion.com/pitchfork-gives-music-6-8-1819569318).[^1] It cut deep at 16-year-old me, who would stay up until midnight every night to read the latest Pitchfork reviews[^2] so I would know what to think about new music. The story points out the insanity of rating music in the first place, as well as "slavishly follow[ing] the website’s advice."
+
+Despite having developed more of my own taste since high school, I still find value in Pitchfork and other sites to keep up with new music and see what might be worth my time. [Album of The Year](https://www.albumoftheyear.org) is one of my favorite resources for accomplishing these tasks. It catalogs reviews from `r ratings %>% pull(pub_name) %>% unique() %>% length()`+ websites, putting all the music and stats you could ever want in one place.
+
+For this project, I've scraped AotY for all of 2018's album reviews and end of the year lists to gather some insights about music and its criticism in 2018.
+<!-- It might be foolish to care so strongly about what one writer thinks about an album, but there could be wisdom in looking at what critics as a whole think about music from the last year. -->
+
+[^1]: By my calculations, this year, they give it a `r p4k_score`.
+[^2]: Only look at the scores
+
+Albums in this analysis match at least one of two conditions:
+
+1. The release is considered an "LP" (in contrast to, say, a "mixtape") by AoTY, has at least 5 critic reviews, and was released in 2018 (i.e. it appears on [this page](https://www.albumoftheyear.org/ratings/6-highest-rated/2018/1).
+1. A publication ranked it in their end of the year list (i.e. it appears on a list linked from [this page](https://www.albumoftheyear.org/list/summary/2018/).) Some publications put obscure albums (those with fewer than 5 reviews) on their lists, and some also include releases from 2017.
+
+Overall, this lists are quite diverse; of the `r nrow(meta)` unique of the albums meeting the conditions above, `r ncol(list_mat)` of them made it on at least one of the `r nrow(list_mat)` lists.
+
+# The Big List
+Album of the Year [aggregates](https://www.albumoftheyear.org/list/summary/2018/) the rankings of the `r ratings %>% filter(is_ranked) %>% pull(pub_name) %>% unique() %>% length()` lists by awarding 10 points for a 1st place ranking, 8 points for 2nd, 6 points for 3rd, 5 points for placing in the top 10, 3 points for placing in the top 25, and 1 point for anything else (outside the top 10, or in an unranked list). Almost every album on AotY is categorized by a release data, genre, and label. We'll look at trends among each of these pieces of metadata.
+
+## Release Date
+
+### When was 2018, Anyway?
+
+A few sites are guilty of putting 2017 albums on their 2018 lists. Most of these placements are forgivable - [Sidney Gish's "No Dogs Allowed"](https://www.albumoftheyear.org/album/98869) from New Year's Eve is certainly close enough to 2018 to count. Others get off on technicalities. Piccadilly Records places three 2017 albums in their top 100; however, they all saw vinyl releases in 2018. Jon Pareles's pick of [Jupiter & Okwess's "Kin Sonic"](https://www.albumoftheyear.org/album/84202) might look egregious, but its American release was almost a full year after its European debut. See the table for all of the 2017 albums that made an end of the year list.
+
+```{r When was 2018}
+aoty %>% 
+  filter(is_ranked, date < "2018-01-01") %>% 
+  group_by(album_id) %>% 
+  arrange(pub_name) %>% 
+  mutate(Publication = str_c(pub_name, collapse = ", ")) %>% 
+  ungroup() %>% 
+  distinct(album_id, .keep_all = T) %>% 
+  arrange(date) %>% 
+  select(artist, title, Publication, date) %>%
+  mutate(date = str_c(lubridate::month(date, label = T, abbr = T), ". ", lubridate::day(date))) %>% 
+  rename_all(str_to_title)
+```
+
+```{r monthly}
+month_by_month <- top_100 %>% 
+  mutate(m = lubridate::month(date, label = T)) %>%
+  group_by(m) %>%
+  count() %>% 
+  rename(n_in_list = n) %>% 
+  full_join(
+meta %>% 
+  mutate(m = lubridate::month(date, label = T)) %>% 
+  group_by(m) %>%
+  count() %>% 
+  rename(n_released = n) %>% 
+  drop_na(m)
+) %>% 
+  replace_na(list(n_in_list = 0)) %>% 
+  mutate(n_not_in_list = n_released - n_in_list) %>% 
+  rename("Top 100" = n_in_list,
+         "Other" = n_not_in_list,
+         "Total" = n_released)
+```
+
+The most common month of release for a Top 100 album was June, with `r month_by_month[[6, "Top 100"]]` of its `r month_by_month[[6, "Total"]]` albums (`r round(month_by_month[[6, "Top 100"]] / month_by_month[[6, "Total"]] * 100)`%) of its albums making the list. July under-performs, only contributing `r month_by_month[[7, "Top 100"]]` of its `r month_by_month[[7, "Total"]]` albums  (`r round(month_by_month[[7, "Top 100"]] / month_by_month[[7, "Total"]] * 100)`%) to the Top 100.
+
+
+```{r month plot}
+month_by_month %>%
+  select(-Total) %>% 
+  gather("key", "value", -m) %>% 
+ggplot(aes(x = m, y = value, fill = key)) +
+  geom_col() +
+  labs(fill = "Album Category") +
+  xlab("Month") +
+  ylab("Releases")
+```
+
+Releases in December make up only `r round(month_by_month[[12, "Total"]] / sum(month_by_month[["Total"]]) * 100)`% of the releases for the year and none of the Top 100. 
+
+There are a few explanations for this I can think of:
+
+* Most lists are created in late November or early December, so December releases are not typically in consideration for best of the year lists. Occasionally, a release from December of the previous year will make the next year's list (e.g. [Run the Jewels 3](https://www.albumoftheyear.org/album/66437), released December 25, 2016 earned 38 points in the 2017 rankings)
+* Albums released in December may not get reviews until January because many sites stop publishing reviews over the holidays.
+
+
+## Genre
+
+The Top 100 features albums from `r top_100 %>% unnest(genres) %>% pull(genres) %>% unique() %>% length()` distinct genres. An album may belong to more than one genre, but 93 of the releases belong to two or fewer. [Julia Holter's "Aviary"](https://www.albumoftheyear.org/album/120775) spans the most genres, being classified as Progressive Pop, Art Pop, Baroque Pop, and Ambient Pop. Outside of the Top 100, two other releases this year managed to hit four genres: ["Everywhere at the End of Time - Stage 5" by The Caretaker](https://www.albumoftheyear.org/album/120940) (Sound Collage, Noise, Dark Ambient, Glitch) and [Moaning's "Moaning"](ttps://www.albumoftheyear.org/album/95707) (Post-Punk, Noise Pop, Indie Rock, Post-Punk Revival).
+
+It looks like [Indie Rock Isn't Dead](https://noisey.vice.com/en_us/article/qkb7gm/indie-rock-isnt-dead) (at least not among music publications) - it was the most represented genre in the Top 100, as well as the most represented genre overall. While "R&B" and "Alternative R&B" both make an appearance in both graphs, it's interesting to note that a generic "Rock"  does not, despite "Indie Rock" being so prevalent. This is a bit of a peculiarity of AotY's genre classification. Rock is broken up in to many categories, with lots of releases this year: `r meta %>% 
+  unnest(genres) %>% 
+  filter(str_detect(genres, "Rock|rock")) %>% 
+  count(genres) %>% 
+  arrange(desc(n)) %>% 
+  mutate(text = paste0(genres, " (", n, ")")) %>% 
+  pull(text) %>% 
+  toString()`. "Pop" music gets a similar treatment.
+  
+Genre over-performers include Art Pop, R&B, and Alternative R&B, while Indie Pop, Trap Rap under-perform. Interestingly, there were more Alternative R&B releases (33) than "regular" R&B releases (27) this year. Perhaps a genre renaming is in order.
+
+
+```{r}
+top_100 %>%
+  unnest(genres) %>%
+  count(genres, sort = T) %>% 
+  head(7) %>% 
+  mutate(genres = str_replace_all(genres, " |-", "\n")) %>% 
+  ggplot(aes(fct_reorder(genres, desc(n)), n)) +
+  geom_col() +
+  ylab("Releases in Top 100") +
+  xlab("Genre") +
+meta %>%
+  unnest(genres) %>%
+  drop_na(genres) %>% 
+  count(genres, sort = T) %>% 
+  head(10) %>% 
+  mutate(genres = str_replace_all(genres, " |-", "\n")) %>% 
+  ggplot(aes(fct_reorder(genres, desc(n)), n)) +
+  geom_col() +
+  ylab("Releases in 2018") +
+  xlab("Genre") +
+  plot_layout(ncol = 1)
+```
+
+
+## Label
+
+Frankly, I couldn't tell you what label most of my favorite artists are signed to, so my insight here is a limited. To me, the first chart looks like a list of labels that I've  heard of and kind of like, while the second looks like a list of labels I've heard of, but don't have any strong opinions toward.
+
+```{r label}
+top_100 %>%
+  unnest(label) %>%
+  count(label, sort = T) %>% 
+  drop_na() %>% 
+  filter(n > 2) %>% 
+  mutate(label = str_replace_all(label, " |-", "\n")) %>% 
+  ggplot(aes(fct_reorder(label, desc(n)), n)) +
+  geom_col() +
+  ylab("Releases in Top 100") +
+  xlab("Label") +
+meta %>%
+  unnest(label) %>%
+  drop_na(label) %>% 
+  count(label, sort = T) %>% 
+  head(10) %>% 
+  mutate(label = str_replace_all(label, " |-", "\n")) %>% 
+  ggplot(aes(fct_reorder(label, desc(n)), n)) +
+  geom_col() +
+  ylab("Releases in 2018") +
+  xlab("Label") +
+  plot_layout(ncol = 1)
+```
+
+
+## Under-performers, Snubs, and Upsets
+
+In addition to computing an end of the year ranking based on list appearances, Album of the Year also [ranks albums by their average critic score](https://www.albumoftheyear.org/ratings/6-highest-rated/2018/1). In tables below, I've computed the difference between the two ranking methods.
+
+### Under-perfomers
+
+These are the albums that had high critic scores, but weren't ranked highly on end of the year lists. These releases seem to be by established acts whose music isn't particularly "now" - exactly what you might have expected. These are good albums that aren't especially relevant to defining the year in music.
+
+```{r underperformers}
+ratings %>%
+  add_count(album_id) %>%
+  filter(pub_name == "aoty") %>%
+  filter(n > 5) %>%
+  mutate(score_rank = dense_rank(desc(score))) %>%
+  mutate(diff = rank - score_rank) %>%
+  arrange(desc(diff)) %>%
+  left_join(meta) %>%
+  mutate(genres = map_chr(genres, toString)) %>% 
+  select(Artist = artist,
+         Album = title,
+         Genre = genres,
+         `Score Rank` = score_rank,
+         `List Rank` = rank,
+         Difference = diff) %>%
+  head(6)
+```
+
+### Snubs
+
+These are the albums that had high critic scores,but didn't make it into the top 100 AotY list. I think my comments about under-performers are valid here as well - these are good albums that don't represent 2018.
+
+```{r snubs}
+# Biggest Snubs
+ratings %>% 
+  filter(!is.na(score)) %>% 
+  count(album_id) %>% 
+  mutate(n = n  - 1) %>% 
+  filter(n >= 10) %>% 
+  left_join(filter(ratings, pub_name == "aoty")) %>% 
+  mutate(score_rank = dense_rank(desc(score))) %>% 
+  filter(!is_ranked) %>% 
+  arrange(score_rank) %>% 
+  left_join(meta) %>% 
+  mutate(genres = map_chr(genres, toString)) %>% 
+  select(Artist = artist,
+         Album = title,
+         Genre = genres,
+         Reviews = n,
+         `Score Rank` = score_rank) %>% 
+  head()
+```
+
+### Upsets
+
+These are the albums that had better end of the year list performance than their critic scores would predict. These are sort of the opposite of the other two lists. Every one of these releases could be classified as "pop" - they're good albums that are *particularly* representative of 2018.
+
+
+```{r upsets}
+ratings %>%
+  add_count(album_id) %>%
+  filter(pub_name == "aoty") %>%
+  filter(n > 5) %>%
+  mutate(score_rank = dense_rank(desc(score))) %>%
+  mutate(diff = score_rank - rank) %>%
+  arrange(desc(diff)) %>%
+  left_join(meta) %>%
+  mutate(genres = map_chr(genres, toString)) %>% 
+  select(Artist = artist,
+         Album = title,
+         Genre = genres,
+         `Score Rank` = score_rank,
+         `List Rank` = rank,
+         Difference = diff) %>%
+  head(6)
+```
+
+
+# Comparing Lists
+
+In this section, I've compared lists using an ad-hoc similarity score[^3], which scores two lists similarities on a scale from 0 (nothing in common) to 100 (exactly the same).
+
+[^3]: For each publication, I reverse the rankings (e.g. in a top 50 list, the number 1 album gets a score of 50 and and the number 50 album gets a score of 1. All the albums not on the list get a score of 0). Then I compute the cosine similarity between all of the list vectors and multiply by 100.
+
+The first table show the lists that were most similar to the final Album of the Year list. In general, these were longer lists (50 albums) from "major" publications. Depending on your view, these might be the most "boring" or "authoritative" lists.
+
+```{r}
+aoty_most_similar_to(pub = "aoty") %>% mutate(Similarity = round(Similarity * 100)) %>% head(5)
+```
+
+In the next table, I've compared all of the lists to each other. The most similar lists were [Yahoo Music](https://www.albumoftheyear.org/list/1189-yahoo-musics-top-10-albums-of-2018/?s=asc) and [Refinery29](https://www.albumoftheyear.org/list/1204-refinery29s-10-best-albums-of-2018/). They're both short lists, with only 10 albums each - 6 of which are found in both lists. Similarly, [Us Weekly](https://www.albumoftheyear.org/list/1148-us-weeklys-10-best-albums-of-2018/) and Refinery29 share 5 albums. Among the longer lists, [Pitchfork](https://www.albumoftheyear.org/list/1107-pitchforks-50-best-albums-of-2018/) and [Esquire](https://www.albumoftheyear.org/list/1176-esquires-20-best-albums-of-2018/) are quite similar, with Pitchfork's 50 album list including 17 of Esquire's 20 ranked albums.
+
+```{r}
+aoty_most_similar() %>% filter(`Publication 1` != "aoty" &
+                                `Publication 2` != "aoty") %>% 
+  mutate(Similarity = round(Similarity * 100)) %>% head(10)
+```
+
+```{r eval=F}
+refinery_albums <- ratings %>% filter(is_ranked, pub_name == "Refinery29") %>% pull(album_id)
+yahoo_albums <- ratings %>% filter(is_ranked, pub_name == "Yahoo Music") %>% pull(album_id)
+us_albums <- ratings %>% filter(is_ranked, pub_name == "Us Weekly") %>% pull(album_id)
+
+p4k_albums <- ratings %>% filter(is_ranked, pub_name == "Pitchfork") %>% pull(album_id)
+esq_albums <- ratings %>% filter(is_ranked, pub_name == "Esquire (US)") %>% pull(album_id)
+
+length(intersect(esq_albums, p4k_albums))
+
+length(intersect(refinery_albums, us_albums))
+length(intersect(yahoo_albums, us_albums))
+```
+
+# Final Thoughts
+
+This project was a much bigger undertaking than I expected. I was only able to half-finished a similar post in 2017, but I now have the infrastructure setup so that I should be able to do it again next year and start to analyze some trends. If you're interested in doing something similar, you can download the [dataset](https://github.com/damonbayer/AOTY/blob/master/aoty.csv) I made and look at the relevant code on my [GitHub](https://github.com/damonbayer/AOTY/). Comment on my post on [Reddit](https://www.reddit.com/r/indieheads/comments/afp1bz/analyzing_the_top_100_albums_of_2018/) if you have any feedback or want to see additional stats or figures.
+
+<!-- ## Clustering -->
+
+```{r Clustering, eval=FALSE}
+movMF_result <- function(k) {
+  sapply(X = k, FUN = function(k){
+  n <- nrow(list_mat)
+  p <- ncol(list_mat)
+  mov_res <- movMF::movMF(list_mat, k)
+  C <- k - 1 + k * p + k
+  log(n) * C - 2 * as.numeric(mov_res$ll)  
+  }
+  )
+}
+
+skmeans_result <- function(k) {
+  sapply(X = k, FUN = function(k) {
+    skmeans_res <- skmeans::skmeans(x = list_mat, k = k)
+    skmeans_res$value
+  })
+}
+
+
+my_res <- tibble(k = c(2:10)) %>% 
+  mutate(BIC = movMF_result(k)) %>% 
+  mutate(sk = skmeans_result(k))
+
+ggplot(my_res, aes(k, BIC)) +
+  geom_line() +
+ggplot(my_res, aes(k, sk)) +
+  geom_line()
+
+```
